@@ -111,10 +111,10 @@ REG32(CONFIGOPTS, 0x18u)
 REG32(CSID, 0x1cu)
     FIELD(CSID, CSID, 0u, 32u)
 REG32(COMMAND, 0x20u)
-    FIELD(COMMAND, LEN, 0u, 9u)
-    FIELD(COMMAND, CSAAT, 9u, 1u)
-    FIELD(COMMAND, SPEED, 10u, 2u)
-    FIELD(COMMAND, DIRECTION, 12u, 2u)
+    FIELD(COMMAND, CSAAT, 0u, 1u)
+    FIELD(COMMAND, SPEED, 1u, 2u)
+    FIELD(COMMAND, DIRECTION, 3u, 2u)
+    FIELD(COMMAND, LEN, 5u, 20u)
 REG32(RXDATA, 0x24u)
 REG32(TXDATA, 0x28u)
 REG32(ERROR_ENABLE, 0x2cu)
@@ -370,7 +370,7 @@ struct TxFifo {
  */
 typedef struct {
     uint32_t opts; /* configopts */
-    uint16_t command; /* command[15:0] */
+    uint32_t command; /* command[31:0] */
     uint8_t csid; /* csid[7:0] */
     bool ongoing; /* command is being processed */
 } CmdFifoSlot;
@@ -752,7 +752,7 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     s->fsm.active = true;
     ot_spi_host_update_event(s);
 
-    uint32_t command = (uint32_t)headcmd->command;
+    uint32_t command = headcmd->command;
     bool read = ot_spi_host_is_rx(command);
     bool write = ot_spi_host_is_tx(command);
     unsigned speed = FIELD_EX32(command, COMMAND, SPEED);
@@ -831,7 +831,7 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
         ongoing = false;
     }
 
-    headcmd->command = (uint16_t)command;
+    headcmd->command = command;
     headcmd->ongoing = ongoing;
 
     timer_mod(s->fsm_delay,
@@ -860,7 +860,7 @@ static void ot_spi_host_post_fsm(void *opaque)
     trace_ot_spi_host_fsm(s->ot_id, "post");
 
     CmdFifoSlot *headcmd = cmdfifo_peek(s->cmd_fifo);
-    uint32_t command = (uint32_t)headcmd->command;
+    uint32_t command = headcmd->command;
     bool ongoing = headcmd->ongoing;
 
     ot_spi_host_trace_status(s->ot_id, "P>", ot_spi_host_get_status(s));
@@ -1130,7 +1130,7 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         uint16_t csid = (uint16_t)s->regs[R_CSID];
         CmdFifoSlot slot = {
             .opts = s->config_opts[csid],
-            .command = (uint16_t)val32, /* only b15..b0 are meaningful */
+            .command = val32,
             .csid = csid,
             .ongoing = false,
         };
