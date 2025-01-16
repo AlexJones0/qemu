@@ -285,7 +285,8 @@ def main():
             argparser.error(f"No such file '{lcpath}'")
 
         if not args.otpconst:
-            ocpath = joinpath(ot_dir, 'hw/ip/otp_ctrl/rtl/otp_ctrl_part_pkg.sv')
+            ocpath = joinpath(ot_dir, 'hw', top,
+                              'ip_autogen/otp_ctrl/rtl/otp_ctrl_part_pkg.sv')
         else:
             ocpath = args.otpconst
         if not isfile(lcpath):
