@@ -154,8 +154,8 @@ enum OtEgResetRequest {
     OT_EG_RESET_COUNT
 };
 
-/* EarlGrey/CW310 Peripheral clock is 2.5 MHz */
-#define OT_EG_PERIPHERAL_CLK_HZ 2500000u
+/* EarlGrey/CW310 Peripheral clock is 6 MHz */
+#define OT_EG_PERIPHERAL_CLK_HZ 6000000u
 
 /* EarlGrey/CW310 AON clock is 250 kHz */
 #define OT_EG_AON_CLK_HZ 250000u
