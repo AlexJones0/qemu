@@ -224,7 +224,7 @@ struct OtIbexWrapperEgState {
 
     MemoryRegion mmio;
     MemoryRegion remappers[PARAM_NUM_REGIONS];
-    IbexIRQ alerts[PARAM_NUM_ALERTS];
+    qemu_irq alerts[PARAM_NUM_ALERTS];
 
     uint32_t *regs;
     OtIbexTestLogEngine *log_engine;
@@ -254,7 +254,7 @@ static void ot_ibex_wrapper_eg_update_alerts(OtIbexWrapperEgState *s)
     }
 
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
+        qemu_set_irq(s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
 }
 
@@ -1014,7 +1014,8 @@ static void ot_ibex_wrapper_eg_init(Object *obj)
                           TYPE_OT_IBEX_WRAPPER_EG, REGS_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
-        ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
+        qdev_init_gpio_out_named(DEVICE(obj), &s->alerts[ix], OT_DEVICE_ALERT,
+                                 1);
     }
 
     qdev_init_gpio_in_named(DEVICE(obj), &ot_ibex_wrapper_eg_cpu_enable_recv,
