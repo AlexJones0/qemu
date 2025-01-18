@@ -108,7 +108,7 @@ struct OtAonTimerState {
     IbexIRQ nmi_bark;
     IbexIRQ pwrmgr_wkup;
     IbexIRQ pwrmgr_bite;
-    IbexIRQ alert;
+    qemu_irq alert;
 
     QEMUTimer *wkup_timer;
     QEMUTimer *wdog_timer;
@@ -193,7 +193,7 @@ static inline bool ot_aon_timer_wdog_register_write_enabled(OtAonTimerState *s)
 static void ot_aon_timer_update_alert(OtAonTimerState *s)
 {
     bool level = s->regs[R_ALERT_TEST] & R_ALERT_TEST_FATAL_FAULT_MASK;
-    ibex_irq_set(&s->alert, level);
+    qemu_set_irq(s->alert, level);
 }
 
 static void ot_aon_timer_update_irqs(OtAonTimerState *s)
@@ -545,7 +545,7 @@ static void ot_aon_timer_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->nmi_bark, OT_AON_TIMER_BARK);
     ibex_qdev_init_irq(obj, &s->pwrmgr_wkup, OT_AON_TIMER_WKUP);
     ibex_qdev_init_irq(obj, &s->pwrmgr_bite, OT_AON_TIMER_BITE);
-    ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->alert, OT_DEVICE_ALERT, 1);
 
     memory_region_init_io(&s->mmio, obj, &ot_aon_timer_ops, s,
                           TYPE_OT_AON_TIMER, REGS_SIZE);
