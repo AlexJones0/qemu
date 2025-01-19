@@ -2,6 +2,7 @@
  * QEMU OpenTitan AES device
  *
  * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2025 lowRISC contributors.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -425,9 +426,11 @@ static void ot_aes_init_keyshare(OtAESState *s, bool randomize)
     OtAESRegisters *r = s->regs;
     OtAESContext *c = s->ctx;
 
-    trace_ot_aes_init("keyshare");
     if (randomize) {
+        trace_ot_aes_init("keyshare init (randomize data)");
         ot_aes_randomize(s, r->keyshare, ARRAY_SIZE(r->keyshare));
+    } else {
+        trace_ot_aes_init("keyshare init (data preserved)");
     }
     bitmap_zero(r->keyshare_bm, (int64_t)(PARAM_NUM_REGS_KEY * 2u));
     c->key_ready = false;
@@ -438,9 +441,11 @@ static void ot_aes_init_iv(OtAESState *s, bool randomize)
     OtAESRegisters *r = s->regs;
     OtAESContext *c = s->ctx;
 
-    trace_ot_aes_init("iv");
     if (randomize) {
+        trace_ot_aes_init("iv init (randomize data)");
         ot_aes_randomize(s, r->iv, ARRAY_SIZE(r->iv));
+    } else {
+        trace_ot_aes_init("iv init (data preserved)");
     }
     bitmap_zero(r->iv_bm, PARAM_NUM_REGS_IV);
     c->iv_ready = false;
@@ -874,7 +879,15 @@ static void ot_aes_process(OtAESState *s)
             memcpy(c->iv, c->cbc.IV, sizeof(c->iv));
             break;
         case AES_CFB:
-            memcpy(c->iv, c->cfb.IV, sizeof(c->iv));
+            // In AES CFB mode the output IV is the ciphertext. For encryption
+            // that corresponds to the block output XORed with the plaintext.
+            // See the block diagrams:
+            //  https://en.wikipedia.org/wiki/File:CFB_encryption.svg
+            //  https://en.wikipedia.org/wiki/File:CFB_decryption.svg
+            // LibTomCrypt instead provides the output of the block operation
+            // (without the XOR), regardless of whether you use `cfb.IV` or
+            // `cfb_getiv`, so we avoid using the library here.
+            memcpy(c->iv, encrypt ? c->dst : c->src, sizeof(c->iv));
             break;
         case AES_OFB:
             memcpy(c->iv, c->ofb.IV, sizeof(c->iv));
