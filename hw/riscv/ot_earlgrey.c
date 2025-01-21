@@ -791,6 +791,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
                              OT_PWRMGR_WKUP, OT_PWRMGR_WAKEUP_AON_TIMER),
             OT_EG_SOC_SIGNAL(OT_AON_TIMER_BITE, 0, PWRMGR, \
                              OT_PWRMGR_RST, OT_EG_RESET_AON_TIMER),
+            OT_EG_SOC_SIGNAL(OT_AON_TIMER_BARK, 0, IBEX_WRAPPER, \
+                             OT_IBEX_WRAPPER_NMI, OT_IBEX_NMI_WDOG),
             OT_EG_SOC_GPIO_ALERT(0, 31)
         ),
         .prop = IBEXDEVICEPROPDEFS(

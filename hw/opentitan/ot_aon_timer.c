@@ -203,8 +203,8 @@ static void ot_aon_timer_update_irqs(OtAonTimerState *s)
     trace_ot_aon_timer_irqs(s->ot_id, wkup, bark, s->wdog_bite);
 
     ibex_irq_set(&s->irq_wkup, wkup);
-    ibex_irq_set(&s->irq_bark, bark);
     ibex_irq_set(&s->nmi_bark, bark);
+    ibex_irq_set(&s->irq_bark, bark);
     ibex_irq_set(&s->pwrmgr_wkup, wkup);
     ibex_irq_set(&s->pwrmgr_bite, s->wdog_bite);
 }
