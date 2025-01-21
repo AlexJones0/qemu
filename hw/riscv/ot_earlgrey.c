@@ -1055,6 +1055,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x411f0000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_GPIO(0, HART, IRQ_NMI),
             OT_EG_SOC_GPIO_ALERT(0, 61),
             OT_EG_SOC_GPIO_ALERT(1, 62),
             OT_EG_SOC_GPIO_ALERT(2, 63),

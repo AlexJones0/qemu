@@ -83,8 +83,8 @@ REG32(DBUS_ADDR_MATCHING_1, 0x40u)
 REG32(DBUS_REMAP_ADDR_0, 0x44u)
 REG32(DBUS_REMAP_ADDR_1, 0x48u)
 REG32(NMI_ENABLE, 0x4cu)
-    SHARED_FIELD(NMI_ALERT_EN_BIT, 0u, 1u)
-    SHARED_FIELD(NMI_WDOG_EN_BIT, 1u, 1u)
+    SHARED_FIELD(NMI_ALERT_EN_BIT, OT_IBEX_NMI_ALERT, 1u)
+    SHARED_FIELD(NMI_WDOG_EN_BIT, OT_IBEX_NMI_WDOG, 1u)
 REG32(NMI_STATE, 0x50u)
 REG32(ERR_STATUS, 0x54u)
     FIELD(ERR_STATUS, REG_INTG, 0u, 1u)
@@ -225,6 +225,7 @@ struct OtIbexWrapperEgState {
     MemoryRegion mmio;
     MemoryRegion remappers[PARAM_NUM_REGIONS];
     qemu_irq alerts[PARAM_NUM_ALERTS];
+    IbexIRQ nmi_irq;
 
     uint32_t *regs;
     OtIbexTestLogEngine *log_engine;
@@ -770,6 +771,24 @@ static void ot_ibex_wrapper_eg_cpu_enable_recv(void *opaque, int n, int level)
     ot_ibex_wrapper_eg_update_exec(s);
 }
 
+static void ot_ibex_wrapper_eg_nmi_recv(void *opaque, int n, int level)
+{
+    OtIbexWrapperEgState *s = opaque;
+
+    g_assert((unsigned)n < OT_IBEX_NMI_COUNT);
+
+    /* NMI_STATE is rw1c, so must be cleared with a register write. */
+    if (level) {
+        s->regs[R_NMI_STATE] |= 1u << (unsigned)n;
+    }
+
+    trace_ot_ibex_wrapper_nmi_recv(s->ot_id ?: "", n ? "WDOG" : "ALERT",
+                                   (bool)level);
+
+    uint32_t nmi_active = s->regs[R_NMI_ENABLE] & s->regs[R_NMI_STATE];
+    ibex_irq_set(&s->nmi_irq, (bool)nmi_active);
+}
+
 static void ot_ibex_wrapper_eg_escalate_rx(void *opaque, int n, int level)
 {
     OtIbexWrapperEgState *s = opaque;
@@ -1020,8 +1039,12 @@ static void ot_ibex_wrapper_eg_init(Object *obj)
 
     qdev_init_gpio_in_named(DEVICE(obj), &ot_ibex_wrapper_eg_cpu_enable_recv,
                             OT_IBEX_WRAPPER_CPU_EN, OT_IBEX_CPU_EN_COUNT);
+    qdev_init_gpio_in_named(DEVICE(obj), &ot_ibex_wrapper_eg_nmi_recv,
+                            OT_IBEX_WRAPPER_NMI, OT_IBEX_NMI_COUNT);
     qdev_init_gpio_in_named(DEVICE(obj), &ot_ibex_wrapper_eg_escalate_rx,
                             OT_ALERT_ESCALATE, 1);
+
+    ibex_qdev_init_irq(obj, &s->nmi_irq, NULL);
 
     s->regs = g_new0(uint32_t, REGS_COUNT);
     s->log_engine = g_new0(OtIbexTestLogEngine, 1u);
