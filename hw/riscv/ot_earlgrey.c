@@ -640,7 +640,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ESCALATE(0, IBEX_WRAPPER, 0),
             OT_EG_SOC_GPIO_ESCALATE(1, LC_CTRL, 0),
             OT_EG_SOC_GPIO_ESCALATE(1, LC_CTRL, 1),
-            OT_EG_SOC_GPIO_ESCALATE(3, PWRMGR, 0)
+            OT_EG_SOC_GPIO_ESCALATE(3, PWRMGR, 0),
+            OT_EG_SOC_SIGNAL(OT_ALERT_NMI, 0, IBEX_WRAPPER, \
+                             OT_IBEX_WRAPPER_NMI, OT_IBEX_NMI_ALERT)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn", EDN0)
