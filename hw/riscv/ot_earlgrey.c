@@ -1214,6 +1214,11 @@ static void ot_eg_soc_hart_configure(DeviceState *dev, const IbexDeviceDef *def,
     qdev_prop_set_array(dev, "pmp_addr", pmp_addr);
 
     qdev_prop_set_uint64(dev, "mseccfg", (uint64_t)OT_EG_MSECCFG);
+
+    /* NMIs are defined in Ibex to all have a mcause of 31 */
+    RISCVCPU *cpu = RISCV_CPU(dev);
+    CPURISCVState *env = &cpu->env;
+    env->nmi_cause = 31u;
 }
 
 static void ot_eg_soc_otp_ctrl_configure(
