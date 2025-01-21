@@ -637,7 +637,11 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 127),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 128),
             OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 129),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 130)
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(3, PLIC, 130),
+            OT_EG_SOC_GPIO_ESCALATE(0, IBEX_WRAPPER, 0),
+            OT_EG_SOC_GPIO_ESCALATE(1, LC_CTRL, 0),
+            OT_EG_SOC_GPIO_ESCALATE(1, LC_CTRL, 1),
+            OT_EG_SOC_GPIO_ESCALATE(3, PWRMGR, 0)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn", EDN0)
