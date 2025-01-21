@@ -929,6 +929,12 @@ static void ot_ibex_wrapper_eg_regs_write(void *opaque, hwaddr addr,
         }
         ot_ibex_wrapper_eg_update_remap(s, true, reg - R_DBUS_REMAP_ADDR_0);
         break;
+    case R_NMI_ENABLE:
+        s->regs[reg] |= val32; /* rw1s */
+        break;
+    case R_NMI_STATE:
+        s->regs[reg] &= ~val32; /* rw1c */
+        break;
     case R_DV_SIM_STATUS:
         ot_ibex_wrapper_eg_status_report(s, val32);
         switch (val32) {
