@@ -111,10 +111,16 @@ REG32(CONFIGOPTS, 0x18u)
 REG32(CSID, 0x1cu)
     FIELD(CSID, CSID, 0u, 32u)
 REG32(COMMAND, 0x20u)
+/* Darjeeling field definitions */
     FIELD(COMMAND, CSAAT, 0u, 1u)
     FIELD(COMMAND, SPEED, 1u, 2u)
     FIELD(COMMAND, DIRECTION, 3u, 2u)
     FIELD(COMMAND, LEN, 5u, 20u)
+/* Earlgrey 1.0.0 field definitions */
+    FIELD(COMMAND, EG_1_0_0_LEN, 0u, 9u)
+    FIELD(COMMAND, EG_1_0_0_CSAAT, 9u, 1u)
+    FIELD(COMMAND, EG_1_0_0_SPEED, 10u, 2u)
+    FIELD(COMMAND, EG_1_0_0_DIRECTION, 12u, 2u)
 REG32(RXDATA, 0x24u)
 REG32(TXDATA, 0x28u)
 REG32(ERROR_ENABLE, 0x2cu)
@@ -153,6 +159,12 @@ REG32(EVENT_ENABLE, 0x34u)
      R_COMMAND_CSAAT_MASK     | \
      R_COMMAND_SPEED_MASK     | \
      R_COMMAND_DIRECTION_MASK)
+
+#define R_COMMAND_EG_1_0_0_MASK \
+    (R_COMMAND_EG_1_0_0_LEN_MASK | \
+     R_COMMAND_EG_1_0_0_CSAAT_MASK | \
+     R_COMMAND_EG_1_0_0_SPEED_MASK | \
+     R_COMMAND_EG_1_0_0_DIRECTION_MASK)
 
 #define R_ERROR_ENABLE_MASK \
     (R_ERROR_ENABLE_CMDBUSY_MASK   | \
@@ -360,6 +372,7 @@ struct OtSPIHostState {
     uint32_t completion_delay_ns; /** completion delay/pacing */
     uint32_t bus_num; /* SPI host port number */
     uint32_t num_cs; /* Supported CS line count */
+    uint8_t version;
 };
 
 /* ------------------------------------------------------------------------ */
@@ -486,14 +499,64 @@ static uint32_t cmdfifo_num_used(const CmdFifo *fifo)
 /* Helpers */
 /* ------------------------------------------------------------------------ */
 
-static bool ot_spi_host_is_rx(uint32_t command)
+static uint32_t
+ot_spi_host_get_command_csaat(const OtSPIHostState *s, uint32_t command)
 {
-    return (bool)(FIELD_EX32(command, COMMAND, DIRECTION) & 0x1u);
+    if (s->version == OT_SPI_HOST_VERSION_EG_1_0_0) {
+        return FIELD_EX32(command, COMMAND, EG_1_0_0_CSAAT);
+    } else {
+        return FIELD_EX32(command, COMMAND, CSAAT);
+    }
 }
 
-static bool ot_spi_host_is_tx(uint32_t command)
+static uint32_t
+ot_spi_host_get_command_speed(const OtSPIHostState *s, uint32_t command)
 {
-    return (bool)(FIELD_EX32(command, COMMAND, DIRECTION) & 0x2u);
+    if (s->version == OT_SPI_HOST_VERSION_EG_1_0_0) {
+        return FIELD_EX32(command, COMMAND, EG_1_0_0_SPEED);
+    } else {
+        return FIELD_EX32(command, COMMAND, SPEED);
+    }
+}
+
+static uint32_t
+ot_spi_host_get_command_direction(const OtSPIHostState *s, uint32_t command)
+{
+    if (s->version == OT_SPI_HOST_VERSION_EG_1_0_0) {
+        return FIELD_EX32(command, COMMAND, EG_1_0_0_DIRECTION);
+    } else {
+        return FIELD_EX32(command, COMMAND, DIRECTION);
+    }
+}
+
+static uint32_t
+ot_spi_host_get_command_len(const OtSPIHostState *s, uint32_t command)
+{
+    if (s->version == OT_SPI_HOST_VERSION_EG_1_0_0) {
+        return FIELD_EX32(command, COMMAND, EG_1_0_0_LEN);
+    } else {
+        return FIELD_EX32(command, COMMAND, LEN);
+    }
+}
+
+static uint32_t ot_spi_host_deposit_command_len(
+    const OtSPIHostState *s, uint32_t command, uint32_t value)
+{
+    if (s->version == OT_SPI_HOST_VERSION_EG_1_0_0) {
+        return FIELD_DP32(command, COMMAND, EG_1_0_0_LEN, value);
+    } else {
+        return FIELD_DP32(command, COMMAND, LEN, value);
+    }
+}
+
+static bool ot_spi_host_is_rx(const OtSPIHostState *s, uint32_t command)
+{
+    return (bool)(ot_spi_host_get_command_direction(s, command) & 0x1u);
+}
+
+static bool ot_spi_host_is_tx(const OtSPIHostState *s, uint32_t command)
+{
+    return (bool)(ot_spi_host_get_command_direction(s, command) & 0x2u);
 }
 
 static bool ot_spi_host_is_ready(const OtSPIHostState *s)
@@ -515,9 +578,9 @@ static bool ot_spi_host_update_stall(OtSPIHostState *s)
     g_assert(s->active.state != CMD_NONE);
 
     uint32_t command = s->active.cmd.command;
-    unsigned length = FIELD_EX32(command, COMMAND, LEN) + 1u;
-    bool read = ot_spi_host_is_rx(command);
-    bool write = ot_spi_host_is_tx(command);
+    unsigned length = ot_spi_host_get_command_len(s, command) + 1u;
+    bool read = ot_spi_host_is_rx(s, command);
+    bool write = ot_spi_host_is_tx(s, command);
 
     bool resume = true;
 
@@ -754,9 +817,9 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
     }
 
     uint32_t command = s->active.cmd.command;
-    bool read = ot_spi_host_is_rx(command);
-    bool write = ot_spi_host_is_tx(command);
-    unsigned speed = FIELD_EX32(command, COMMAND, SPEED);
+    bool read = ot_spi_host_is_rx(s, command);
+    bool write = ot_spi_host_is_tx(s, command);
+    unsigned speed = ot_spi_host_get_command_speed(s, command);
     unsigned clkdiv = FIELD_EX32(s->active.cmd.opts, CONFIGOPTS, CLKDIV);
     if (trace_event_get_state(TRACE_OT_SPI_HOST_CMD_CLOCK)) {
         if (clkdiv != s->last_clkdiv) {
@@ -766,7 +829,7 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
         }
     }
     s->last_clkdiv = clkdiv;
-    unsigned length = FIELD_EX32(command, COMMAND, LEN) + 1u;
+    unsigned length = ot_spi_host_get_command_len(s, command) + 1u;
     if (!(read || write)) {
         /* dummy mode uses clock cycle count rather than byte count */
         if (length % (1u << (3u - speed))) {
@@ -782,10 +845,11 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 
     trace_ot_spi_host_exec_command(
         s->ot_id, s->active.cmd.id,
-        F_COMMAND_DIRECTION[FIELD_EX32(command, COMMAND, DIRECTION)],
-        F_COMMAND_SPEED[FIELD_EX32(command, COMMAND, SPEED)],
-        (unsigned)s->active.cmd.cs, (bool)FIELD_EX32(command, COMMAND, CSAAT),
-        length, s->fsm.transaction);
+        F_COMMAND_DIRECTION[ot_spi_host_get_command_direction(s, command)],
+        F_COMMAND_SPEED[ot_spi_host_get_command_speed(s, command)],
+        (unsigned)s->active.cmd.cs,
+        (bool)ot_spi_host_get_command_csaat(s, command), length,
+        s->fsm.transaction);
 
     if (s->active.size == 0) {
         s->active.ts = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
@@ -831,10 +895,11 @@ static void ot_spi_host_step_fsm(OtSPIHostState *s, const char *cause)
 
     if (length) {
         /* if the transfer early ended, a stall condition has been detected */
-        s->active.cmd.command = FIELD_DP32(command, COMMAND, LEN, length - 1);
+        s->active.cmd.command =
+            ot_spi_host_deposit_command_len(s, command, length - 1);
         resched = ot_spi_host_update_stall(s);
     } else {
-        s->active.cmd.command = FIELD_DP32(command, COMMAND, LEN, 0);
+        s->active.cmd.command = ot_spi_host_deposit_command_len(s, command, 0);
         s->active.state = CMD_EXECUTED;
     }
 
@@ -887,7 +952,7 @@ static void ot_spi_host_retire(OtSPIHostState *s)
 
     trace_ot_spi_host_retire_command(s->ot_id, s->active.cmd.id);
 
-    if (ot_spi_host_is_rx(command)) {
+    if (ot_spi_host_is_rx(s, command)) {
         /*
          * transfer has been completed, RX FIFO may need padding up to a
          * word
@@ -899,7 +964,7 @@ static void ot_spi_host_retire(OtSPIHostState *s)
     }
 
     /* release /CS if this is the last command of the current transaction */
-    if (!FIELD_EX32(command, COMMAND, CSAAT)) {
+    if (!ot_spi_host_get_command_csaat(s, command)) {
         s->fsm.transaction = false;
         ot_spi_host_chip_select(s, s->active.cmd.cs, s->fsm.transaction);
     }
@@ -940,7 +1005,7 @@ static void ot_spi_host_schedule_fsm(void *opaque)
         ot_spi_host_update_regs(s);
 
         uint32_t command = s->active.cmd.command;
-        unsigned length = FIELD_EX32(command, COMMAND, LEN) + 1u;
+        unsigned length = ot_spi_host_get_command_len(s, command) + 1u;
         bool pending = timer_pending(s->fsm_delay);
         trace_ot_spi_host_cmd_ongoing(s->ot_id, s->active.cmd.id, length,
                                       pending);
@@ -1134,7 +1199,11 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] = val32;
         break;
     case R_COMMAND: {
-        val32 &= R_COMMAND_MASK;
+        if (s->version == OT_SPI_HOST_VERSION_EG_1_0_0) {
+            val32 &= R_COMMAND_EG_1_0_0_MASK;
+        } else {
+            val32 &= R_COMMAND_MASK;
+        }
 
         /* IP not enabled */
         if (!(REG_GET(s, CONTROL, SPIEN))) {
@@ -1151,9 +1220,9 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
             break;
         }
 
-        if (((FIELD_EX32(val32, COMMAND, DIRECTION) == 0x3u) &&
-             (FIELD_EX32(val32, COMMAND, SPEED) != 0u)) ||
-            (FIELD_EX32(val32, COMMAND, SPEED) == 3u)) {
+        if (((ot_spi_host_get_command_direction(s, val32) == 0x3u) &&
+             ot_spi_host_get_command_speed(s, val32) != 0u) ||
+            (ot_spi_host_get_command_speed(s, val32) == 3u)) {
             /* dual/quad SPI cannot be used w/ full duplex mode */
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: %s: invalid command parameters\n", __func__,
@@ -1180,10 +1249,11 @@ static void ot_spi_host_io_write(void *opaque, hwaddr addr, uint64_t val64,
 
         trace_ot_spi_host_new_command(
             s->ot_id, slot.id,
-            F_COMMAND_DIRECTION[FIELD_EX32(slot.command, COMMAND, DIRECTION)],
-            F_COMMAND_SPEED[FIELD_EX32(slot.command, COMMAND, SPEED)], csid,
-            (bool)FIELD_EX32(slot.command, COMMAND, CSAAT),
-            FIELD_EX32(slot.command, COMMAND, LEN) + 1u);
+            F_COMMAND_DIRECTION
+                [ot_spi_host_get_command_direction(s, slot.command)],
+            F_COMMAND_SPEED[ot_spi_host_get_command_speed(s, slot.command)],
+            csid, (bool)ot_spi_host_get_command_csaat(s, slot.command),
+            ot_spi_host_get_command_len(s, slot.command) + 1u);
 
         cmdfifo_push(s->cmd_fifo, &slot);
 
@@ -1295,6 +1365,7 @@ static Property ot_spi_host_properties[] = {
                        FSM_START_DELAY_NS),
     DEFINE_PROP_UINT32("completion-delay", OtSPIHostState, completion_delay_ns,
                        0),
+    DEFINE_PROP_UINT8("version", OtSPIHostState, version, UINT8_MAX),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1353,6 +1424,8 @@ static void ot_spi_host_realize(DeviceState *dev, Error **errp)
     g_assert(s->clock_name);
     g_assert(s->clock_src);
     OBJECT_CHECK(IbexClockSrcIf, s->clock_src, TYPE_IBEX_CLOCK_SRC_IF);
+
+    g_assert(s->version < OT_SPI_HOST_VERSION_COUNT);
 
     s->cs_lines = g_new0(qemu_irq, (size_t)s->num_cs);
 
