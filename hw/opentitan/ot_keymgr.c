@@ -320,6 +320,9 @@ typedef struct OtKeyMgrState {
     OtShadowReg max_creator_key_ver;
     OtShadowReg max_owner_int_key_ver;
     OtShadowReg max_owner_key_ver;
+    uint8_t *salt;
+    uint8_t *sealing_sw_binding;
+    uint8_t *attest_sw_binding;
 
     uint8_t *seeds[KEYMGR_SEED_COUNT];
 
@@ -427,6 +430,20 @@ static void ot_keymgr_update_alerts(OtKeyMgrState *s)
     }
 }
 
+#define ot_keymgr_check_reg_write(_s_, _reg_, _regwen_) \
+    ot_keymgr_check_reg_write_func(__func__, _s_, _reg_, _regwen_)
+
+static inline bool ot_keymgr_check_reg_write_func(
+    const char *func, OtKeyMgrState *s, hwaddr reg, hwaddr regwen)
+{
+    if (s->regs[regwen]) {
+        return true;
+    }
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: Write to %s protected with %s\n", func,
+                  REG_NAME(reg), REG_NAME(regwen));
+    return false;
+}
+
 static uint64_t ot_keymgr_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtKeyMgrState *s = opaque;
@@ -439,15 +456,37 @@ static uint64_t ot_keymgr_read(void *opaque, hwaddr addr, unsigned size)
     switch (reg) {
     case R_INTR_STATE:
     case R_INTR_ENABLE:
-    case R_INTR_TEST:
-    case R_ALERT_TEST:
     case R_CFG_REGWEN:
     case R_START:
-    case R_CONTROL_SHADOWED:
     case R_SIDELOAD_CLEAR:
     case R_RESEED_INTERVAL_REGWEN:
-    case R_RESEED_INTERVAL_SHADOWED:
     case R_SW_BINDING_REGWEN:
+    case R_KEY_VERSION:
+    case R_MAX_CREATOR_KEY_VER_REGWEN:
+    case R_MAX_OWNER_INT_KEY_VER_REGWEN:
+    case R_MAX_OWNER_KEY_VER_REGWEN:
+    case R_WORKING_STATE:
+    case R_OP_STATUS:
+    case R_ERR_CODE:
+    case R_FAULT_STATUS:
+    case R_DEBUG:
+        val32 = s->regs[reg];
+        break;
+    case R_CONTROL_SHADOWED:
+        val32 = ot_shadow_reg_read(&s->control);
+        break;
+    case R_RESEED_INTERVAL_SHADOWED:
+        val32 = ot_shadow_reg_read(&s->reseed_interval);
+        break;
+    case R_MAX_CREATOR_KEY_VER_SHADOWED:
+        val32 = ot_shadow_reg_read(&s->max_creator_key_ver);
+        break;
+    case R_MAX_OWNER_INT_KEY_VER_SHADOWED:
+        val32 = ot_shadow_reg_read(&s->max_owner_int_key_ver);
+        break;
+    case R_MAX_OWNER_KEY_VER_SHADOWED:
+        val32 = ot_shadow_reg_read(&s->max_owner_key_ver);
+        break;
     case R_SEALING_SW_BINDING_0:
     case R_SEALING_SW_BINDING_1:
     case R_SEALING_SW_BINDING_2:
@@ -455,7 +494,11 @@ static uint64_t ot_keymgr_read(void *opaque, hwaddr addr, unsigned size)
     case R_SEALING_SW_BINDING_4:
     case R_SEALING_SW_BINDING_5:
     case R_SEALING_SW_BINDING_6:
-    case R_SEALING_SW_BINDING_7:
+    case R_SEALING_SW_BINDING_7: {
+        unsigned offset = (reg - R_SEALING_SW_BINDING_0) * sizeof(uint32_t);
+        val32 = ldl_le_p(&s->sealing_sw_binding[offset]);
+        break;
+    }
     case R_ATTEST_SW_BINDING_0:
     case R_ATTEST_SW_BINDING_1:
     case R_ATTEST_SW_BINDING_2:
@@ -463,7 +506,11 @@ static uint64_t ot_keymgr_read(void *opaque, hwaddr addr, unsigned size)
     case R_ATTEST_SW_BINDING_4:
     case R_ATTEST_SW_BINDING_5:
     case R_ATTEST_SW_BINDING_6:
-    case R_ATTEST_SW_BINDING_7:
+    case R_ATTEST_SW_BINDING_7: {
+        unsigned offset = (reg - R_ATTEST_SW_BINDING_0) * sizeof(uint32_t);
+        val32 = ldl_le_p(&s->attest_sw_binding[offset]);
+        break;
+    }
     case R_SALT_0:
     case R_SALT_1:
     case R_SALT_2:
@@ -471,14 +518,11 @@ static uint64_t ot_keymgr_read(void *opaque, hwaddr addr, unsigned size)
     case R_SALT_4:
     case R_SALT_5:
     case R_SALT_6:
-    case R_SALT_7:
-    case R_KEY_VERSION:
-    case R_MAX_CREATOR_KEY_VER_REGWEN:
-    case R_MAX_CREATOR_KEY_VER_SHADOWED:
-    case R_MAX_OWNER_INT_KEY_VER_REGWEN:
-    case R_MAX_OWNER_INT_KEY_VER_SHADOWED:
-    case R_MAX_OWNER_KEY_VER_REGWEN:
-    case R_MAX_OWNER_KEY_VER_SHADOWED:
+    case R_SALT_7: {
+        unsigned offset = (reg - R_SALT_0) * sizeof(uint32_t);
+        val32 = ldl_le_p(&s->salt[offset]);
+        break;
+    }
     case R_SW_SHARE0_OUTPUT_0:
     case R_SW_SHARE0_OUTPUT_1:
     case R_SW_SHARE0_OUTPUT_2:
@@ -495,15 +539,18 @@ static uint64_t ot_keymgr_read(void *opaque, hwaddr addr, unsigned size)
     case R_SW_SHARE1_OUTPUT_5:
     case R_SW_SHARE1_OUTPUT_6:
     case R_SW_SHARE1_OUTPUT_7:
-    case R_WORKING_STATE:
-    case R_OP_STATUS:
-    case R_ERR_CODE:
-    case R_FAULT_STATUS:
-    case R_DEBUG:
-        /* TODO: implement register reads */
+        /* TODO: implement RC software share register reads */
         qemu_log_mask(LOG_UNIMP,
                       "%s: %s, Read from register %s is not implemented.\n",
                       __func__, s->ot_id, REG_NAME(reg));
+        val32 = 0u;
+        break;
+    case R_INTR_TEST:
+    case R_ALERT_TEST:
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: W/O register 0x%02" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
+        val32 = 0u;
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -527,7 +574,6 @@ static void ot_keymgr_write(void *opaque, hwaddr addr, uint64_t val64,
     (void)size;
 
     uint32_t val32 = (uint32_t)val64;
-    (void)val32;
 
     hwaddr reg = R32_OFF(addr);
 
@@ -537,16 +583,79 @@ static void ot_keymgr_write(void *opaque, hwaddr addr, uint64_t val64,
 
     switch (reg) {
     case R_INTR_STATE:
+        val32 &= INTR_MASK;
+        s->regs[reg] &= ~val32; /*RW1C*/
+        ot_keymgr_update_irq(s);
+        break;
     case R_INTR_ENABLE:
+        val32 &= INTR_MASK;
+        s->regs[reg] = val32;
+        ot_keymgr_update_irq(s);
+        break;
     case R_INTR_TEST:
+        val32 &= INTR_MASK;
+        s->regs[R_INTR_STATE] |= val32;
+        ot_keymgr_update_irq(s);
+        break;
     case R_ALERT_TEST:
-    case R_CFG_REGWEN:
+        val32 &= ALERT_MASK;
+        s->regs[reg] |= val32;
+        ot_keymgr_update_alerts(s);
+        break;
     case R_START:
+        if (!ot_keymgr_check_reg_write(s, reg, R_CFG_REGWEN)) {
+            break;
+        }
+        val32 &= R_START_EN_MASK;
+        s->regs[reg] = val32;
+        /* TODO: implement R_START */
+        break;
     case R_CONTROL_SHADOWED:
+        if (!ot_keymgr_check_reg_write(s, reg, R_CFG_REGWEN)) {
+            break;
+        }
+        val32 &= R_CONTROL_SHADOWED_MASK;
+        switch (ot_shadow_reg_write(&s->control, val32)) {
+        case OT_SHADOW_REG_STAGED:
+        case OT_SHADOW_REG_COMMITTED:
+            break;
+        case OT_SHADOW_REG_ERROR:
+        default:
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_SHADOW_UPDATE_MASK;
+            ot_keymgr_update_alerts(s);
+        }
+        break;
     case R_SIDELOAD_CLEAR:
+        if (!ot_keymgr_check_reg_write(s, reg, R_CFG_REGWEN)) {
+            break;
+        }
+        val32 &= R_SIDELOAD_CLEAR_VAL_MASK;
+        s->regs[reg] = val32;
+        /* TODO: implement R_SIDELOAD_CLEAR */
+        break;
     case R_RESEED_INTERVAL_REGWEN:
+        val32 &= R_RESEED_INTERVAL_REGWEN_EN_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        break;
     case R_RESEED_INTERVAL_SHADOWED:
+        if (!ot_keymgr_check_reg_write(s, reg, R_RESEED_INTERVAL_REGWEN)) {
+            break;
+        }
+        val32 &= R_RESEED_INTERVAL_SHADOWED_VAL_MASK;
+        switch (ot_shadow_reg_write(&s->control, val32)) {
+        case OT_SHADOW_REG_STAGED:
+        case OT_SHADOW_REG_COMMITTED:
+            break;
+        case OT_SHADOW_REG_ERROR:
+        default:
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_SHADOW_UPDATE_MASK;
+            ot_keymgr_update_alerts(s);
+        }
+        break;
     case R_SW_BINDING_REGWEN:
+        val32 &= R_SW_BINDING_REGWEN_EN_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        break;
     case R_SEALING_SW_BINDING_0:
     case R_SEALING_SW_BINDING_1:
     case R_SEALING_SW_BINDING_2:
@@ -554,7 +663,14 @@ static void ot_keymgr_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_SEALING_SW_BINDING_4:
     case R_SEALING_SW_BINDING_5:
     case R_SEALING_SW_BINDING_6:
-    case R_SEALING_SW_BINDING_7:
+    case R_SEALING_SW_BINDING_7: {
+        if (!ot_keymgr_check_reg_write(s, reg, R_SW_BINDING_REGWEN)) {
+            break;
+        }
+        unsigned offset = (reg - R_SEALING_SW_BINDING_0) * sizeof(uint32_t);
+        stl_le_p(&s->sealing_sw_binding[offset], val32);
+        break;
+    }
     case R_ATTEST_SW_BINDING_0:
     case R_ATTEST_SW_BINDING_1:
     case R_ATTEST_SW_BINDING_2:
@@ -562,7 +678,14 @@ static void ot_keymgr_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_ATTEST_SW_BINDING_4:
     case R_ATTEST_SW_BINDING_5:
     case R_ATTEST_SW_BINDING_6:
-    case R_ATTEST_SW_BINDING_7:
+    case R_ATTEST_SW_BINDING_7: {
+        if (!ot_keymgr_check_reg_write(s, reg, R_SW_BINDING_REGWEN)) {
+            break;
+        }
+        unsigned offset = (reg - R_ATTEST_SW_BINDING_0) * sizeof(uint32_t);
+        stl_le_p(&s->attest_sw_binding[offset], val32);
+        break;
+    }
     case R_SALT_0:
     case R_SALT_1:
     case R_SALT_2:
@@ -570,14 +693,91 @@ static void ot_keymgr_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_SALT_4:
     case R_SALT_5:
     case R_SALT_6:
-    case R_SALT_7:
+    case R_SALT_7: {
+        if (!ot_keymgr_check_reg_write(s, reg, R_CFG_REGWEN)) {
+            break;
+        }
+        unsigned offset = (reg - R_SALT_0) * sizeof(uint32_t);
+        stl_le_p(&s->salt[offset], val32);
+        break;
+    }
     case R_KEY_VERSION:
+        if (!ot_keymgr_check_reg_write(s, reg, R_CFG_REGWEN)) {
+            break;
+        }
+        s->regs[reg] = val32;
+        break;
     case R_MAX_CREATOR_KEY_VER_REGWEN:
+        val32 &= R_MAX_CREATOR_KEY_VER_REGWEN_EN_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        break;
     case R_MAX_CREATOR_KEY_VER_SHADOWED:
+        if (!ot_keymgr_check_reg_write(s, reg, R_MAX_CREATOR_KEY_VER_REGWEN)) {
+            break;
+        }
+        switch (ot_shadow_reg_write(&s->max_creator_key_ver, val32)) {
+        case OT_SHADOW_REG_STAGED:
+        case OT_SHADOW_REG_COMMITTED:
+            break;
+        case OT_SHADOW_REG_ERROR:
+        default:
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_SHADOW_UPDATE_MASK;
+            ot_keymgr_update_alerts(s);
+        }
+        break;
     case R_MAX_OWNER_INT_KEY_VER_REGWEN:
+        val32 &= R_MAX_OWNER_INT_KEY_VER_REGWEN_EN_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        break;
     case R_MAX_OWNER_INT_KEY_VER_SHADOWED:
+        if (!ot_keymgr_check_reg_write(s, reg,
+                                       R_MAX_OWNER_INT_KEY_VER_REGWEN)) {
+            break;
+        }
+        switch (ot_shadow_reg_write(&s->max_owner_int_key_ver, val32)) {
+        case OT_SHADOW_REG_STAGED:
+        case OT_SHADOW_REG_COMMITTED:
+            break;
+        case OT_SHADOW_REG_ERROR:
+        default:
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_SHADOW_UPDATE_MASK;
+            ot_keymgr_update_alerts(s);
+        }
+        break;
     case R_MAX_OWNER_KEY_VER_REGWEN:
+        val32 &= R_MAX_OWNER_KEY_VER_REGWEN_EN_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        break;
     case R_MAX_OWNER_KEY_VER_SHADOWED:
+        if (!ot_keymgr_check_reg_write(s, reg, R_MAX_OWNER_KEY_VER_REGWEN)) {
+            break;
+        }
+        switch (ot_shadow_reg_write(&s->max_owner_key_ver, val32)) {
+        case OT_SHADOW_REG_STAGED:
+        case OT_SHADOW_REG_COMMITTED:
+            break;
+        case OT_SHADOW_REG_ERROR:
+        default:
+            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_SHADOW_UPDATE_MASK;
+            ot_keymgr_update_alerts(s);
+        }
+        break;
+    case R_OP_STATUS:
+        val32 &= R_OP_STATUS_STATUS_MASK;
+        s->regs[reg] &= ~val32; /* RW1C */
+        /* TODO: implement trace on R_OP_STATUS change? */
+        break;
+    case R_ERR_CODE:
+        val32 &= ERR_CODE_MASK;
+        s->regs[reg] &= ~val32; /* RW1C */
+        ot_keymgr_update_alerts(s);
+        break;
+    case R_DEBUG:
+        val32 &= DEBUG_MASK;
+        s->regs[reg] &= val32; /* RW0C */
+        break;
+    case R_CFG_REGWEN:
+    case R_WORKING_STATE:
     case R_SW_SHARE0_OUTPUT_0:
     case R_SW_SHARE0_OUTPUT_1:
     case R_SW_SHARE0_OUTPUT_2:
@@ -594,15 +794,10 @@ static void ot_keymgr_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_SW_SHARE1_OUTPUT_5:
     case R_SW_SHARE1_OUTPUT_6:
     case R_SW_SHARE1_OUTPUT_7:
-    case R_WORKING_STATE:
-    case R_OP_STATUS:
-    case R_ERR_CODE:
     case R_FAULT_STATUS:
-    case R_DEBUG:
-        /* TODO: implement register writes */
-        qemu_log_mask(LOG_UNIMP,
-                      "%s: %s: Write to register %s is not implemented.\n",
-                      __func__, s->ot_id, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: R/O register 0x02%" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -699,6 +894,9 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
     ot_shadow_reg_init(&s->max_owner_int_key_ver, 1u);
     s->regs[R_MAX_OWNER_KEY_VER_REGWEN] = 0x1u;
     ot_shadow_reg_init(&s->max_owner_key_ver, 0u);
+    memset(s->salt, 0u, NUM_SALT_REG * sizeof(uint32_t));
+    memset(s->sealing_sw_binding, 0u, NUM_SW_BINDING_REG * sizeof(uint32_t));
+    memset(s->attest_sw_binding, 0u, NUM_SW_BINDING_REG * sizeof(uint32_t));
 
     /* update IRQ and alert states */
     ot_keymgr_update_irq(s);
@@ -744,6 +942,11 @@ static void ot_keymgr_init(Object *obj)
         ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
     }
 
+    s->salt = g_new0(uint8_t, NUM_SALT_REG * sizeof(uint32_t));
+    s->sealing_sw_binding =
+        g_new0(uint8_t, NUM_SW_BINDING_REG * sizeof(uint32_t));
+    s->attest_sw_binding =
+        g_new0(uint8_t, NUM_SW_BINDING_REG * sizeof(uint32_t));
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->seeds); ix++) {
         s->seeds[ix] = g_new0(uint8_t, KEYMGR_SEED_BYTES);
     }
