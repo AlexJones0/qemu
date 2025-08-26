@@ -663,7 +663,19 @@ static void ot_keymgr_reset_enter(Object *obj, ResetType type)
         c->parent_phases.enter(obj, type);
     }
 
-    /* TODO: reset registers */
+    /* reset registers */
+    memset(s->regs, 0u, sizeof(s->regs));
+    s->regs[R_CFG_REGWEN] = 0x1u;
+    ot_shadow_reg_init(&s->control, 10u);
+    s->regs[R_RESEED_INTERVAL_REGWEN] = 0x1u;
+    ot_shadow_reg_init(&s->reseed_interval, 0x100u);
+    s->regs[R_SW_BINDING_REGWEN] = 0x1u;
+    s->regs[R_MAX_CREATOR_KEY_VER_REGWEN] = 0x1u;
+    ot_shadow_reg_init(&s->max_creator_key_ver, 0u);
+    s->regs[R_MAX_OWNER_INT_KEY_VER_REGWEN] = 0x1u;
+    ot_shadow_reg_init(&s->max_owner_int_key_ver, 1u);
+    s->regs[R_MAX_OWNER_KEY_VER_REGWEN] = 0x1u;
+    ot_shadow_reg_init(&s->max_owner_key_ver, 0u);
 
     /* TODO: update IRQs and alert states */
 }
