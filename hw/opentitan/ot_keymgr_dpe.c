@@ -290,7 +290,7 @@ typedef enum {
     KEYMGR_DPE_OP_STATUS_WIP = 1,
     KEYMGR_DPE_OP_STATUS_DONE_SUCCESS = 2,
     KEYMGR_DPE_OP_STATUS_DONE_ERROR = 3,
-} OtKeyMgrOpStatus;
+} OtKeyMgrDpeOpStatus;
 
 enum {
     /* clang-format off */
@@ -367,7 +367,7 @@ typedef struct {
 typedef struct {
     bool op_req;
     bool op_ack;
-} OtKeyMgrOpState;
+} OtKeyMgrDpeOpState;
 
 typedef struct {
     uint8_t *data;
@@ -394,7 +394,7 @@ typedef struct OtKeyMgrDpeState {
     bool enabled;
     OtKeyMgrDpeFSMState state;
     OtKeyMgrDpePrng prng;
-    OtKeyMgrOpState op_state;
+    OtKeyMgrDpeOpState op_state;
     uint8_t *seeds[KEYMGR_DPE_SEED_COUNT];
 
     /* key slots */
@@ -658,7 +658,8 @@ static void ot_keymgr_dpe_xchange_working_state(
     }
 }
 
-static OtKeyMgrOpStatus ot_keymgr_dpe_get_op_status(const OtKeyMgrDpeState *s)
+static OtKeyMgrDpeOpStatus
+ot_keymgr_dpe_get_op_status(const OtKeyMgrDpeState *s)
 {
     switch (FIELD_EX32(s->regs[R_OP_STATUS], OP_STATUS, VAL)) {
     case KEYMGR_DPE_OP_STATUS_IDLE:
@@ -678,9 +679,9 @@ static OtKeyMgrOpStatus ot_keymgr_dpe_get_op_status(const OtKeyMgrDpeState *s)
     ot_keymgr_dpe_xchange_op_status(_s_, _op_status_, __LINE__)
 
 static void ot_keymgr_dpe_xchange_op_status(
-    OtKeyMgrDpeState *s, OtKeyMgrOpStatus op_status, int line)
+    OtKeyMgrDpeState *s, OtKeyMgrDpeOpStatus op_status, int line)
 {
-    OtKeyMgrOpStatus prev_op_status = ot_keymgr_dpe_get_op_status(s);
+    OtKeyMgrDpeOpStatus prev_op_status = ot_keymgr_dpe_get_op_status(s);
     if (prev_op_status != op_status) {
         trace_ot_keymgr_dpe_change_op_status(s->ot_id, line,
                                              OP_STATUS_NAME(prev_op_status),
