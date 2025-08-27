@@ -689,7 +689,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
              * TODO: add missing life cycle broadcast signals when the required
              * supporting HW is available:
              *  - OT_LC_NVM_DEBUG_EN (for embed. flash)
-             *  - OT_LC_KEYMGR_EN (when keymgr is implemented)
              *  - OT_LC_CHECK_BYP_EN (when Earlgrey supports OTP signals)
              *  - OT_LC_CREATOR_SEED_SW_RW_EN (for OTP and embed. flash)
              *  - OT_LC_OWNER_SEED_SW_RW_EN (for embed. flash)
@@ -701,6 +700,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_D2S(OT_LC_BROADCAST, OT_LC_ESCALATE_EN, LC_ESCALATE),
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CPU_EN, IBEX_WRAPPER,
                              OT_IBEX_WRAPPER_CPU_EN, OT_IBEX_LC_CTRL_CPU_EN),
+            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_KEYMGR_EN, KEYMGR,
+                             OT_KEYMGR_ENABLE, 0),
             OT_EG_SOC_RSP(OT_PWRMGR_LC, PWRMGR)
         ),
         .link = IBEXDEVICELINKDEFS(
