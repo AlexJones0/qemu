@@ -1428,6 +1428,7 @@ static bool ot_keymgr_dpe_main_fsm_tick(OtKeyMgrDpeState *s)
 {
     OtKeyMgrDpeFSMState state = s->state;
     bool op_start = s->regs[R_START] & R_START_EN_MASK;
+    bool invalid_state = s->regs[R_FAULT_STATUS] & FAULT_STATUS_MASK;
     bool init = false;
     uint32_t ctrl = ot_shadow_reg_peek(&s->control);
     uint8_t slot_dst_sel =
@@ -1440,12 +1441,18 @@ static bool ot_keymgr_dpe_main_fsm_tick(OtKeyMgrDpeState *s)
     case KEYMGR_DPE_ST_RESET:
         ot_keymgr_dpe_change_working_state(s, KEYMGR_DPE_WORKING_STATE_RESET);
         if (!op_start) {
+            if (invalid_state) {
+                ot_keymgr_dpe_change_main_fsm_state(s, KEYMGR_DPE_ST_INVALID);
+            }
             break;
         }
         bool op_advance = FIELD_EX32(ctrl, CONTROL_SHADOWED, OPERATION) ==
                           KEYMGR_DPE_OP_ADVANCE;
         if (!s->enabled || !op_advance) {
             s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
+            ot_keymgr_dpe_change_main_fsm_state(s, KEYMGR_DPE_ST_INVALID);
+        } else if (invalid_state) {
+            ot_keymgr_dpe_change_main_fsm_state(s, KEYMGR_DPE_ST_INVALID);
         } else {
             ot_keymgr_dpe_change_main_fsm_state(s,
                                                 KEYMGR_DPE_ST_ENTROPY_RESEED);
@@ -1478,8 +1485,10 @@ static bool ot_keymgr_dpe_main_fsm_tick(OtKeyMgrDpeState *s)
         break;
     case KEYMGR_DPE_ST_ROOTKEY:
         ot_keymgr_dpe_change_working_state(s, KEYMGR_DPE_WORKING_STATE_RESET);
-        if (!s->enabled) {
-            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
+        if (!s->enabled || invalid_state) {
+            if (!s->enabled) {
+                s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
+            }
             ot_keymgr_dpe_change_main_fsm_state(s, KEYMGR_DPE_ST_INVALID);
         } else {
             init = true;
@@ -1512,11 +1521,16 @@ static bool ot_keymgr_dpe_main_fsm_tick(OtKeyMgrDpeState *s)
         ot_keymgr_dpe_change_working_state(s,
                                            KEYMGR_DPE_WORKING_STATE_AVAILABLE);
         if (!op_start) {
+            if (invalid_state) {
+                ot_keymgr_dpe_change_main_fsm_state(s, KEYMGR_DPE_ST_WIPE);
+            }
             /* no state change if op_start is not set */
             break;
         }
-        if (!s->enabled) {
-            s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
+        if (!s->enabled || invalid_state) {
+            if (!s->enabled) {
+                s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
+            }
             /*
              * Given that the root key was latched by an earlier FSM state, we
              * need to take care of clearing the sensitive root key.
