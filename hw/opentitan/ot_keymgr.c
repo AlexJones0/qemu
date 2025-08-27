@@ -526,7 +526,6 @@ static bool ot_keymgr_main_fsm_tick(OtKeyMgrState *s)
         ot_keymgr_change_working_state(s, KEYMGR_WORKING_STATE_RESET);
         bool op_advance =
             FIELD_EX32(ctrl, CONTROL_SHADOWED, OPERATION) == KEYMGR_OP_ADVANCE;
-        /* TODO: add keymgr enablement via lc_ctrl */
         bool advance_sel = op_start && op_advance & s->enabled;
         if (op_start && !advance_sel) {
             s->regs[R_ERR_CODE] |= R_ERR_CODE_INVALID_OP_MASK;
@@ -596,6 +595,31 @@ static void ot_keymgr_update_alerts(OtKeyMgrState *s)
     for (unsigned ix = 0u; ix < ARRAY_SIZE(s->alerts); ix++) {
         ibex_irq_set(&s->alerts[ix], (int)((level >> ix) & 0x1u));
     }
+}
+
+static void ot_keymgr_lc_signal(void *opaque, int irq, int level)
+{
+    OtKeyMgrState *s = opaque;
+    bool enable_keymgr = (bool)level;
+
+    g_assert(irq == 0);
+
+    trace_ot_keymgr_lc_signal(s->ot_id, level);
+
+    bool enablement_changed = enable_keymgr ^ s->enabled;
+    if (!enablement_changed) {
+        return;
+    }
+
+    s->enabled = enable_keymgr;
+
+    if (s->enabled) {
+        s->regs[R_CFG_REGWEN] |= R_CFG_REGWEN_EN_MASK;
+    } else {
+        s->regs[R_CFG_REGWEN] &= R_CFG_REGWEN_EN_MASK;
+    }
+
+    ot_keymgr_schedule_fsm(s);
 }
 
 #define ot_keymgr_check_reg_write(_s_, _reg_, _regwen_) \
@@ -1115,6 +1139,8 @@ static void ot_keymgr_init(Object *obj)
     for (unsigned ix = 0u; ix < ALERT_COUNT; ix++) {
         ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
     }
+    qdev_init_gpio_in_named(DEVICE(s), ot_keymgr_lc_signal, OT_KEYMGR_ENABLE,
+                            1);
 
     s->salt = g_new0(uint8_t, KEYMGR_SALT_BYTES);
     s->sealing_sw_binding = g_new0(uint8_t, KEYMGR_SW_BINDING_BYTES);
