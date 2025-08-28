@@ -1379,8 +1379,10 @@ static void ot_keymgr_dpe_lc_signal(void *opaque, int irq, int level)
 
     if (s->enabled) {
         s->regs[R_DEBUG] &= ~R_DEBUG_INACTIVE_LC_EN_MASK;
+        s->regs[R_CFG_REGWEN] |= R_CFG_REGWEN_EN_MASK;
     } else {
         s->regs[R_DEBUG] |= R_DEBUG_INACTIVE_LC_EN_MASK;
+        s->regs[R_CFG_REGWEN] &= R_CFG_REGWEN_EN_MASK;
     }
 
     ot_keymgr_dpe_schedule_fsm(s);
@@ -1543,10 +1545,9 @@ static bool ot_keymgr_dpe_main_fsm_tick(OtKeyMgrDpeState *s)
     }
 
     /* last requested operation status */
+    bool invalid_op = (bool)(s->regs[R_ERR_CODE] & R_ERR_CODE_INVALID_OP_MASK);
     bool op_done =
-        s->op_state.op_req ?
-            s->op_state.op_ack :
-            (init || (bool)(s->regs[R_ERR_CODE] & R_ERR_CODE_INVALID_OP_MASK));
+        s->op_state.op_req ? s->op_state.op_ack : (init || invalid_op);
     if (op_done) {
         s->op_state.op_req = false;
         s->op_state.op_ack = false;
@@ -1564,8 +1565,8 @@ static bool ot_keymgr_dpe_main_fsm_tick(OtKeyMgrDpeState *s)
         ot_keymgr_dpe_change_op_status(s, KEYMGR_DPE_OP_STATUS_IDLE);
     }
 
-    /* CFG_REGWEN */
-    if (op_start) {
+    /* lock CFG_REGWEN when an operation is ongoing */
+    if (s->enabled && op_start) {
         if (op_done) {
             s->regs[R_CFG_REGWEN] |= R_CFG_REGWEN_EN_MASK;
         } else {
