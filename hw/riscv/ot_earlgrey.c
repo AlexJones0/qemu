@@ -690,19 +690,23 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
              * TODO: add missing life cycle broadcast signals when the required
              * supporting HW is available:
              *  - OT_LC_NVM_DEBUG_EN (for embed. flash)
-             *  - OT_LC_CHECK_BYP_EN (when Earlgrey supports OTP signals)
-             *  - OT_LC_CREATOR_SEED_SW_RW_EN (for OTP and embed. flash)
+             *  - OT_LC_CREATOR_SEED_SW_RW_EN (for embed. flash)
              *  - OT_LC_OWNER_SEED_SW_RW_EN (for embed. flash)
              *  - OT_LC_ISO_PART_SW_RD_EN (for embed. flash)
              *  - OT_LC_ISO_PART_SW_WR_EN (for embed. flash)
-             *  - OT_LC_SEED_HW_RD_EN (for OTP and embed. flash)
+             *  - OT_LC_SEED_HW_RD_EN (for embed. flash)
              */
             OT_EG_SOC_D2S(OT_LC_BROADCAST, OT_LC_HW_DEBUG_EN, LC_HW_DEBUG),
             OT_EG_SOC_D2S(OT_LC_BROADCAST, OT_LC_ESCALATE_EN, LC_ESCALATE),
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CPU_EN, IBEX_WRAPPER,
                              OT_IBEX_WRAPPER_CPU_EN, OT_IBEX_LC_CTRL_CPU_EN),
+            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CHECK_BYP_EN, OTP_CTRL,
+                             OT_LC_BROADCAST, OT_OTP_LC_CHECK_BYP_EN),
             OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_KEYMGR_EN, KEYMGR,
                              OT_KEYMGR_ENABLE, 0),
+            OT_EG_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_SEED_HW_RD_EN,
+                             OTP_CTRL, OT_LC_BROADCAST,
+                             OT_OTP_LC_SEED_HW_RD_EN),
             OT_EG_SOC_RSP(OT_PWRMGR_LC, PWRMGR)
         ),
         .link = IBEXDEVICELINKDEFS(
@@ -1334,14 +1338,10 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
     },
     [OT_EG_SOC_SPLITTER_LC_ESCALATE] = {
         .type = TYPE_SPLIT_IRQ,
-        /*
-         * TODO: Earlgrey OTP signals are not supported yet, add the escalation
-         * connection to the OTP controller when Earlgrey's OTP is updated.
-         * .gpio = IBEXGPIOCONNDEFS(
-         *     OT_EG_SOC_S2D(0, OTP_CTRL, OT_LC_BROADCAST,
-         *                   OT_OTP_LC_ESCALATE_EN)
-         * ),
-         */
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_EG_SOC_S2D(0, OTP_CTRL, OT_LC_BROADCAST,
+                          OT_OTP_LC_ESCALATE_EN)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("num-lines", 1u) // to be changed
         )
