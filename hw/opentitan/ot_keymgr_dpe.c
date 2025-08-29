@@ -1000,6 +1000,7 @@ ot_keymgr_dpe_kdf_append_creator_seed(OtKeyMgrDpeState *s, bool *dvalid)
     ot_keymgr_dpe_kdf_push_bytes(s, secret.secret, OT_OTP_KEYMGR_SECRET_SIZE);
     *dvalid &= ot_keymgr_dpe_valid_data_check(secret.secret,
                                               OT_OTP_KEYMGR_SECRET_SIZE);
+    *dvalid &= secret.valid;
 
     ot_keymgr_dpe_dump_kdf_material(s, "CREATOR_SEED", secret.secret,
                                     OT_OTP_KEYMGR_SECRET_SIZE);
