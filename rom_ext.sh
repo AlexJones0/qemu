@@ -1,0 +1,16 @@
+scripts/opentitan/pyot.py \
+    --otcfg cfg.ini \
+    --embedded-flash 2 \
+    --otp $(realpath ot_test/img_rma.24.vmem) \
+    --rom $(realpath ot_test/mask_rom_fpga_cw310.elf) \
+    --exec $(realpath ot_test/rom_ext_dice_x509_slot_a_fpga_cw310.prod_key_0.prod_key_0.signed.bin) \
+    --boot $(realpath ot_test/flash_write_fpga_cw310_sival_rom_ext.prod_key_0.signed.bin) \
+    --timeout 20 \
+    --icount 6 \
+    --summary \
+    --result build/results.csv \
+    --qemu-log build/qemu.log \
+    --log GU \
+    -V -vvv \
+    -- \
+    -global ot-rstmgr.fatal_reset=1
