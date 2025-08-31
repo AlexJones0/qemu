@@ -138,17 +138,25 @@ class QEMUExecuter:
                               float(self._argdict.get('timeout_factor',
                                                       DEFAULT_TIMEOUT_FACTOR)))
                 self._log.debug('Execute %s', basename(self._argdict['exec']))
-                adef = EasyDict(command=self._qemu_cmd, timeout=timeout,
-                                start_delay=self.DEFAULT_START_DELAY,
-                                asan=self._argdict.get('asan', False))
+                adef = self._build_qemu_command(self._args)
+                boot = self._argdict.get('boot')
+                if boot:
+                    name = f" {self.get_test_radix(app)} + {self.get_test_radix(boot)}"
+                else:
+                    name = self.get_test_radix(app)
+                adef.context = QEMUContext(name, self._qfm, self._qemu_cmd, {}, None)
+                adef.timeout = timeout
+                adef.expect_result = 0
+                adef.test_name = name
                 ret, xtime, err = qot.run(adef)
                 results[ret] += 1
                 sret = self.RESULT_MAP.get(ret, ret)
                 icount = self._argdict.get('icount')
                 if csv:
-                    csv.writerow(TestResult(self.get_test_radix(app), sret,
+                    csv.writerow(TestResult(name, sret,
                                             xtime, icount, err))
                     cfp.flush()
+                return
             tests = self._build_test_list()
             tcount = len(tests)
             self._log.info('Found %d tests to execute', tcount)
