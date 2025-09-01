@@ -24,6 +24,15 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
+ *
+ * Known limitations:
+ *  - Entropy reseeding not currently supported: the value in the shadowed
+ *  `RESEED_INTERVAL_THRESHOLD` register is ignored.
+ *  - Currently the keymgr is designed without KMAC masking. If KMAC masking
+ *    is enabled, a small amount of logic (loading creator root key and
+ *    KMAC data / key integrity checks) needs to be updated to use both key
+ *    shares correctly.
+ *  - Some faults may not be modelled completely accurately (i.e., untested).
  */
 
 #include "qemu/osdep.h"
