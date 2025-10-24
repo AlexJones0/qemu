@@ -3735,7 +3735,18 @@ static void ot_otp_dj_configure_sram(OtOTPDjState *s)
 static void ot_otp_dj_configure_part_scramble_keys(OtOTPDjState *s)
 {
     for (unsigned ix = 0u; ix < ARRAY_SIZE(OtOTPPartDescs); ix++) {
+        if (!OtOTPPartDescs[ix].secret) {
+            continue;
+        }
+
         if (!s->otp_scramble_key_xstrs[ix]) {
+            /* if OTP data is loaded, unscrambling keys are mandatory */
+            if (s->blk) {
+                error_setg(&error_fatal,
+                           "%s: %s Missing OTP scrambling key for part %s (%u)",
+                           __func__, s->ot_id, PART_NAME(ix), ix);
+                return;
+            }
             continue;
         }
 
@@ -3743,8 +3754,8 @@ static void ot_otp_dj_configure_part_scramble_keys(OtOTPDjState *s)
         if (len != OTP_SCRAMBLING_KEY_BYTES * 2u) {
             error_setg(
                 &error_fatal,
-                "%s: %s Invalid OTP scrambling key length %zu for partition %u",
-                __func__, s->ot_id, len, ix);
+                "%s: %s Invalid OTP scrambling key length %zu for part %s (%u)",
+                __func__, s->ot_id, len, PART_NAME(ix), ix);
             return;
         }
 
@@ -3755,8 +3766,8 @@ static void ot_otp_dj_configure_part_scramble_keys(OtOTPDjState *s)
                                      s->otp_scramble_key_xstrs[ix],
                                      OTP_SCRAMBLING_KEY_BYTES, true, true)) {
             error_setg(&error_fatal,
-                       "%s: %s unable to parse otp_scramble_keys[%u]", __func__,
-                       s->ot_id, ix);
+                       "%s: %s unable to parse otp_scramble_keys[%u] for %s",
+                       __func__, s->ot_id, ix, PART_NAME(ix));
             return;
         }
 
