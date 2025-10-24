@@ -901,9 +901,6 @@ ot_otp_eg_lci_change_state_line(OtOTPEgState *s, OtOTPLCIState state, int line);
 
 #define OT_OTP_PART_DATA_OFFSET(_pix_) \
     ((unsigned)(OtOTPPartDescs[(_pix_)].offset))
-#define OT_OTP_PART_DATA_BYTE_SIZE(_pix_) \
-    ((unsigned)(OtOTPPartDescs[(_pix_)].size - \
-                sizeof(uint32_t) * NUM_DIGEST_WORDS))
 
 #ifdef OT_OTP_DEBUG
 #define OT_OTP_HEXSTR_SIZE  256u
@@ -915,6 +912,18 @@ ot_otp_eg_lci_change_state_line(OtOTPEgState *s, OtOTPLCIState state, int line);
 #define TRACE_OTP(msg, ...)
 #define ot_otp_hexdump(_s_, _b_, _l_)
 #endif
+
+static inline unsigned ot_otp_eg_part_data_byte_size(unsigned pix)
+{
+    size_t size = OtOTPPartDescs[pix].size;
+
+    if (OtOTPPartDescs[pix].hw_digest || OtOTPPartDescs[pix].sw_digest) {
+        size -= sizeof(uint32_t) * NUM_DIGEST_WORDS;
+    }
+
+    return (unsigned)size;
+}
+
 
 static void ot_otp_eg_update_irqs(OtOTPEgState *s)
 {
@@ -1580,7 +1589,7 @@ static void ot_otp_eg_bufferize_partition(OtOTPEgState *s, unsigned ix)
     }
 
     unsigned offset = (unsigned)OtOTPPartDescs[ix].offset;
-    unsigned part_size = OT_OTP_PART_DATA_BYTE_SIZE(ix);
+    unsigned part_size = ot_otp_eg_part_data_byte_size(ix);
 
     const uint8_t *base = (const uint8_t *)s->otp->data;
     base += offset;
@@ -1600,7 +1609,7 @@ static void ot_otp_eg_check_partition_integrity(OtOTPEgState *s, unsigned ix)
 
     pctrl->locked = true;
 
-    unsigned part_size = OT_OTP_PART_DATA_BYTE_SIZE(ix);
+    unsigned part_size = ot_otp_eg_part_data_byte_size(ix);
     uint64_t digest =
         ot_otp_eg_compute_partition_digest(s,
                                            (const uint8_t *)pctrl->buffer.data,
@@ -2108,7 +2117,7 @@ static void ot_otp_eg_dai_digest(OtOTPEgState *s)
     } else {
         data = (const uint8_t *)pctrl->buffer.data;
     }
-    unsigned part_size = OT_OTP_PART_DATA_BYTE_SIZE(partition);
+    unsigned part_size = ot_otp_eg_part_data_byte_size(partition);
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG);
 
@@ -3961,7 +3970,7 @@ static void ot_otp_eg_reset_enter(Object *obj, ResetType type)
             s->partctrls[ix].state.u = OTP_UNBUF_IDLE;
             continue;
         }
-        unsigned part_size = OT_OTP_PART_DATA_BYTE_SIZE(ix);
+        unsigned part_size = ot_otp_eg_part_data_byte_size(ix);
         memset(s->partctrls[ix].buffer.data, 0, part_size);
         s->partctrls[ix].buffer.digest = 0;
         if (OtOTPPartDescs[ix].iskeymgr_creator ||
@@ -4079,7 +4088,7 @@ static void ot_otp_eg_init(Object *obj)
         if (!OtOTPPartDescs[ix].buffered) {
             continue;
         }
-        size_t part_words = OT_OTP_PART_DATA_BYTE_SIZE(ix) / sizeof(uint32_t);
+        size_t part_words = ot_otp_eg_part_data_byte_size(ix) / sizeof(uint32_t);
         s->partctrls[ix].buffer.data = g_new0(uint32_t, part_words);
     }
 
