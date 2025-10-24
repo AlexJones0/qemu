@@ -1783,6 +1783,7 @@ static void ot_otp_eg_dai_read(OtOTPEgState *s)
     bool is_digest = ot_otp_eg_is_part_digest_offset(partition, address);
     bool is_readable = ot_otp_eg_is_readable(s, partition);
     bool is_wide = ot_otp_eg_is_wide_granule(partition, address);
+    bool is_buffered = ot_otp_eg_is_buffered(partition);
 
     /* "in all partitions, the digest itself is ALWAYS readable." */
     if (!is_digest && !is_readable) {
@@ -1790,7 +1791,8 @@ static void ot_otp_eg_dai_read(OtOTPEgState *s)
         return;
     }
 
-    unsigned waddr = address >> 2u;
+    unsigned part_offset = address - OT_OTP_PART_DATA_OFFSET(partition);
+    unsigned part_waddr = part_offset >> 2u;
     bool do_ecc =
         (partition != OTP_PART_VENDOR_TEST) && ot_otp_eg_is_ecc_enabled(s);
 
@@ -1800,13 +1802,21 @@ static void ot_otp_eg_dai_read(OtOTPEgState *s)
     unsigned err = 0;
     unsigned cell_count = sizeof(uint32_t) + (do_ecc ? sizeof(uint16_t) : 0);
 
-    if (is_wide || is_digest) {
-        waddr &= ~0b1u;
-        data_lo = s->otp->data[waddr];
-        data_hi = s->otp->data[waddr + 1u];
+    const uint32_t *data;
+    if (!is_buffered) {
+        data = (const uint32_t *)((s->otp->data) +
+                                  OT_OTP_PART_DATA_OFFSET(partition));
+    } else {
+        data = (const uint32_t *)pctrl->buffer.data;
+    }
 
-        if (do_ecc) {
-            unsigned ewaddr = waddr >> 1u;
+    if (is_wide || is_digest) {
+        part_waddr &= ~0b1u;
+        data_lo = data[part_waddr];
+        data_hi = data[part_waddr + 1u];
+
+        if (!is_buffered && do_ecc) {
+            unsigned ewaddr = address >> 1u;
             g_assert(ewaddr < s->otp->ecc_size);
             uint32_t ecc = s->otp->ecc[ewaddr];
             if (ot_otp_eg_is_ecc_enabled(s)) {
@@ -1817,14 +1827,14 @@ static void ot_otp_eg_dai_read(OtOTPEgState *s)
 
         cell_count *= 2u;
     } else {
-        data_lo = s->otp->data[waddr];
+        data_lo = data[part_waddr];
         data_hi = 0u;
 
-        if (do_ecc) {
-            unsigned ewaddr = waddr >> 1u;
+        if (!is_buffered && do_ecc) {
+            unsigned ewaddr = address >> 3u;
             g_assert(ewaddr < s->otp->ecc_size);
             uint32_t ecc = s->otp->ecc[ewaddr];
-            if (waddr & 1u) {
+            if ((address >> 2u) & 1u) {
                 ecc >>= 16u;
             }
             if (ot_otp_eg_is_ecc_enabled(s)) {
@@ -1848,7 +1858,7 @@ static void ot_otp_eg_dai_read(OtOTPEgState *s)
 
     s->dai->partition = partition;
 
-    if (!ot_otp_eg_is_buffered(partition)) {
+    if (!is_buffered) {
         /* fake slow access to OTP cell */
         unsigned access_time = s->be_chars.timings.read_ns * cell_count;
         timer_mod(s->dai->delay,
