@@ -68,6 +68,15 @@ struct RISCVDebugDeviceClass {
      * Set next DM address
      */
     void (*set_next_dm)(RISCVDebugDeviceState *dev, uint32_t addr);
+
+    /*
+     * Notify the Debug Module that a hart has started.
+     *
+     * Called manually for enabling a CPU, instead of hooking into
+     * `riscv_cpu_reset_exit` to allow cases where hart reset
+     * management is decoupled from instruction execution enablement.
+     */
+    void (*notify_hart_start)(RISCVDebugDeviceState *dev, CPUState *cs);
 };
 
 struct RISCVDebugDeviceState {

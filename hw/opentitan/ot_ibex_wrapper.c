@@ -55,6 +55,7 @@
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
+#include "hw/riscv/debug.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
@@ -233,6 +234,7 @@ struct OtIbexWrapperState {
     char *lc_ignore_ids;
     OtEDNState *edn;
     OtVMapperState *vmapper;
+    RISCVDebugDeviceState *dm;
     uint8_t num_regions;
     uint8_t edn_ep;
     uint8_t qemu_version;
@@ -872,6 +874,12 @@ static void ot_ibex_wrapper_update_exec(OtIbexWrapperState *s)
         cs->halted = 0;
         cs->disabled = false;
         cpu_resume(cs);
+        if (s->dm) {
+            RISCVDebugDeviceClass *dmc =
+                OBJECT_GET_CLASS(RISCVDebugDeviceClass, s->dm,
+                                 TYPE_RISCV_DEBUG_DEVICE);
+            dmc->notify_hart_start(s->dm, cs);
+        }
     } else {
         cs->disabled = true;
         cpu_pause(cs);
@@ -1387,6 +1395,8 @@ static Property ot_ibex_wrapper_properties[] = {
     DEFINE_PROP_LINK("edn", OtIbexWrapperState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_LINK("vmapper", OtIbexWrapperState, vmapper, TYPE_OT_VMAPPER,
                      OtVMapperState *),
+    DEFINE_PROP_LINK("dm", OtIbexWrapperState, dm, TYPE_RISCV_DEBUG_DEVICE,
+                     RISCVDebugDeviceState *),
     DEFINE_PROP_UINT8("num-regions", OtIbexWrapperState, num_regions, 0),
     DEFINE_PROP_UINT8("edn-ep", OtIbexWrapperState, edn_ep, UINT8_MAX),
     DEFINE_PROP_BOOL("lc-ignore", OtIbexWrapperState, lc_ignore, false),

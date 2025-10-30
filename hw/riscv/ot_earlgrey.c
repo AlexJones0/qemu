@@ -1343,7 +1343,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn", EDN0),
-            OT_EG_SOC_DEVLINK("vmapper", VMAPPER)
+            OT_EG_SOC_DEVLINK("vmapper", VMAPPER),
+            OT_EG_SOC_DEVLINK("dm", DM)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("edn-ep", 7u),

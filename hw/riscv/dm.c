@@ -334,6 +334,7 @@ struct RISCVDMState {
     const char *soc; /* Subsystem name, for debug */
     uint64_t nonexistent_bm; /* Selected harts that are not existent */
     uint64_t unavailable_bm; /* Selected harts that are not available */
+    uint64_t haltreq_bm; /* Selected harts that have a pending halt request */
     uint64_t to_go_bm; /* Harts that have been flagged for debug exec */
     uint32_t address; /* DM register addr: only bADDRESS_BITS..b0 are used */
     uint32_t *regs; /* Debug module register values */
@@ -698,6 +699,28 @@ static void riscv_dm_set_next_dm(RISCVDebugDeviceState *dev, uint32_t addr)
     RISCVDMState *dm = RISCV_DM(dev);
 
     dm->regs[A_NEXTDM] = addr;
+}
+
+static void riscv_dm_notify_hart_start(RISCVDebugDeviceState *dev, CPUState *cs)
+{
+    RISCVDMState *dm = RISCV_DM(dev);
+    RISCVCPU *cpu = RISCV_CPU(cs);
+
+    /* hart debugger index is not equivalent to the hartid */
+    unsigned hix = 0;
+    while (hix < dm->hart_count) {
+        if (dm->harts[hix].cpu == cpu) {
+            uint64_t hartbit = 1u << hix;
+            /* if there is a halt request for this hart, enter debug mode */
+            if (dm->haltreq_bm & hartbit) {
+                dm->haltreq_bm &= ~hartbit;
+                dm->unavailable_bm &= ~hartbit;
+                riscv_dm_halt_hart(dm, hix);
+            }
+            break;
+        }
+        hix++;
+    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1335,6 +1358,7 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
                     trace_riscv_dm_unavailable_hart_control(dm->soc, hartsel,
                                                             "halt");
                     ret = CMD_ERR_HALT_RESUME;
+                    dm->haltreq_bm |= hartbit;
                 } else {
                     riscv_dm_halt_hart(dm, hartsel);
                 }
@@ -1370,8 +1394,7 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
     value &= R_DMCONTROL_NDMRESET_MASK | R_DMCONTROL_DMACTIVE_MASK |
              R_DMCONTROL_HARTRESET_MASK;
     /* HARTSELHI never used, since HARTSELLO already encodes up to 1K harts */
-    dm->regs[A_DMCONTROL] = FIELD_DP32(value, DMCONTROL, HARTSELLO, hartsel);
-
+    dm->regs[A_DMCONTROL] |= FIELD_DP32(value, DMCONTROL, HARTSELLO, hartsel);
     return ret;
 }
 
@@ -2414,6 +2437,7 @@ static void riscv_dm_halt_hart(RISCVDMState *dm, unsigned hartsel)
     cpu_exit(cs);
     /* not sure if the real HW clear this flag on halt */
     dm->hart->resumed = false;
+    dm->hart->halted = true;
     riscv_dm_set_cs(dm, true);
     riscv_cpu_store_debug_cause(cs, DCSR_CAUSE_HALTREQ);
     cpu_interrupt(cs, CPU_INTERRUPT_DEBUG);
@@ -2573,6 +2597,7 @@ static void riscv_dm_reset_enter(Object *obj, ResetType type)
     /* Hart statuses are updated on reset_exit */
     dm->nonexistent_bm = 0;
     dm->unavailable_bm = 0;
+    dm->haltreq_bm = 0;
     dm->address = 0;
     dm->to_go_bm = 0;
     for (unsigned ix = 0; ix < dm->hart_count; ix++) {
@@ -2743,6 +2768,7 @@ static void riscv_dm_class_init(ObjectClass *klass, void *data)
     dmc->read_rq = &riscv_dm_read_rq;
     dmc->read_value = &riscv_dm_read_value;
     dmc->set_next_dm = &riscv_dm_set_next_dm;
+    dmc->notify_hart_start = &riscv_dm_notify_hart_start;
 
     /*
      * unfortunately, MemTxtAttrs is a bitfield and there is no built-time way
