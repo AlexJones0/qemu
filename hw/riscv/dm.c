@@ -334,6 +334,7 @@ struct RISCVDMState {
     const char *soc; /* Subsystem name, for debug */
     uint64_t nonexistent_bm; /* Selected harts that are not existent */
     uint64_t unavailable_bm; /* Selected harts that are not available */
+    uint64_t haltreq_bm; /* Selected harts that have a pending halt request */
     uint64_t to_go_bm; /* Harts that have been flagged for debug exec */
     uint32_t address; /* DM register addr: only bADDRESS_BITS..b0 are used */
     uint32_t *regs; /* Debug module register values */
@@ -1335,6 +1336,7 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
                     trace_riscv_dm_unavailable_hart_control(dm->soc, hartsel,
                                                             "halt");
                     ret = CMD_ERR_HALT_RESUME;
+                    dm->haltreq_bm |= hartbit;
                 } else {
                     riscv_dm_halt_hart(dm, hartsel);
                 }
@@ -1370,8 +1372,7 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
     value &= R_DMCONTROL_NDMRESET_MASK | R_DMCONTROL_DMACTIVE_MASK |
              R_DMCONTROL_HARTRESET_MASK;
     /* HARTSELHI never used, since HARTSELLO already encodes up to 1K harts */
-    dm->regs[A_DMCONTROL] = FIELD_DP32(value, DMCONTROL, HARTSELLO, hartsel);
-
+    dm->regs[A_DMCONTROL] |= FIELD_DP32(value, DMCONTROL, HARTSELLO, hartsel);
     return ret;
 }
 
@@ -1538,6 +1539,17 @@ static CmdErr riscv_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
             trace_riscv_dm_status(dm->soc, cs->cpu_index, "became available");
             /* clear the unavailability flag and resume w/ "regular" states */
             dm->unavailable_bm &= ~mask;
+            /*
+             * If there is a halt request for this hart, enter debug mode
+             *
+             * @todo: this is not ideal, as the CPU may have run some instructions
+             * before this dmstatus poll which may have changed the state of
+             * hardware. But with current hart reset management there is no
+             * easy way to determine when execution is resumed. */
+            if (!hart->halted && dm->haltreq_bm & mask) {
+                dm->haltreq_bm &= ~mask;
+                riscv_dm_halt_hart(dm, hix);
+            }
         }
         if (hart->resumed) {
             resumeack += 1;
@@ -2414,6 +2426,7 @@ static void riscv_dm_halt_hart(RISCVDMState *dm, unsigned hartsel)
     cpu_exit(cs);
     /* not sure if the real HW clear this flag on halt */
     dm->hart->resumed = false;
+    dm->hart->halted = true;
     riscv_dm_set_cs(dm, true);
     riscv_cpu_store_debug_cause(cs, DCSR_CAUSE_HALTREQ);
     cpu_interrupt(cs, CPU_INTERRUPT_DEBUG);
@@ -2573,6 +2586,7 @@ static void riscv_dm_reset_enter(Object *obj, ResetType type)
     /* Hart statuses are updated on reset_exit */
     dm->nonexistent_bm = 0;
     dm->unavailable_bm = 0;
+    dm->haltreq_bm = 0;
     dm->address = 0;
     dm->to_go_bm = 0;
     for (unsigned ix = 0; ix < dm->hart_count; ix++) {
