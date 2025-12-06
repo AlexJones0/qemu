@@ -123,6 +123,8 @@ struct OtOtpOtBeState {
     OtOtpBeCharacteristics characteristics;
 
     char *ot_id;
+    uint32_t default_write_ns;
+    uint32_t default_read_ns;
     DeviceState *parent;
 };
 
@@ -224,12 +226,14 @@ static const Property ot_otp_ot_be_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOtpOtBeState, ot_id),
     DEFINE_PROP_LINK("parent", OtOtpOtBeState, parent, TYPE_DEVICE,
                      DeviceState *),
-    DEFINE_PROP_UINT32("write_ns", OtOtpOtBeState,
-                       characteristics.timings.write_ns,
+    DEFINE_PROP_UINT32("default_write_ns", OtOtpOtBeState, default_write_ns,
                        OTP_BE_CHARACTERISTICS.timings.write_ns),
-    DEFINE_PROP_UINT32("read_ns", OtOtpOtBeState,
-                       characteristics.timings.read_ns,
+    DEFINE_PROP_UINT32("write_ns", OtOtpOtBeState,
+                       characteristics.timings.write_ns, UINT32_MAX),
+    DEFINE_PROP_UINT32("default_read_ns", OtOtpOtBeState, default_read_ns,
                        OTP_BE_CHARACTERISTICS.timings.read_ns),
+    DEFINE_PROP_UINT32("read_ns", OtOtpOtBeState,
+                       characteristics.timings.read_ns, UINT32_MAX),
 };
 
 static const MemoryRegionOps ot_otp_ot_be_ops = {
@@ -250,6 +254,21 @@ static void ot_otp_ot_be_reset_enter(Object *obj, ResetType type)
     }
 
     memset(s->regs, 0, sizeof(s->regs));
+
+    /*
+     * Default to the values loaded from the `default_{}_ns` properties which
+     * themselves default to the arbitrary values in OTP_BE_CHARACTERISTICS.
+     * This allows a machine to customize its default timings.
+     * The `{write,read}_ns` properties can be used to manually override these
+     * timings with a global flag passed to QEMU, to allow manual customization
+     * of the OTP timings.
+     */
+    if (s->characteristics.timings.write_ns == UINT32_MAX) {
+        s->characteristics.timings.write_ns = s->default_write_ns;
+    }
+    if (s->characteristics.timings.read_ns == UINT32_MAX) {
+        s->characteristics.timings.read_ns = s->default_read_ns;
+    }
 }
 
 static void ot_otp_ot_be_init(Object *obj)
